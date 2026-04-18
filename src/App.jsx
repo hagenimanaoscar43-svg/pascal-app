@@ -1,3 +1,4 @@
+const API_BASE = "https://pascal-app-backend.onrender.com";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
 
@@ -42,7 +43,7 @@ function App() {
   const loadHistory = useCallback(async () => {
     setIsHistoryLoading(true);
     try {
-      const res = await fetch('https://pascal-app-backend.onrender.com/api/history');
+      const res = await fetch('${API_BASE}/api/history');
       if (res.ok) {
         const data = await res.json();
         setHistory(Array.isArray(data) ? data : []);
@@ -67,7 +68,7 @@ function App() {
   const addToHistory = useCallback(async (type, input, resultData) => {
     if (backendAvailable.current) {
       try {
-        await fetch('https://pascal-app-backend.onrender.com/api/history', {
+        await fetch('${API_BASE}/api/history', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type, input, result: resultData }),
@@ -87,7 +88,7 @@ function App() {
 
     if (backendAvailable.current) {
       try {
-        await fetch('https://pascal-app-backend.onrender.com/api/history', { method: 'DELETE' });
+        await fetch('${API_BASE}/api/history', { method: 'DELETE' });
         loadHistory();
       } catch (error) {
         backendAvailable.current = false;
@@ -105,7 +106,7 @@ function App() {
     try {
       let item;
       if (backendAvailable.current) {
-        const res = await fetch(`https://pascal-app-backend.onrender.com/api/history/${id}`);
+        const res = await fetch(`${API_BASE}/api/history/${id}`);
         if (!res.ok) throw new Error('Failed to fetch');
         item = await res.json();
       } else {
@@ -139,7 +140,7 @@ function App() {
     setAnswerContent(<div className="loading">Computing...</div>);
 
     try {
-      const res = await fetch('https://pascal-app-backend.onrender.com/api/pascal', {
+      const res = await fetch('${API_BASE}/api/pascal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ n: nValue }),
@@ -187,7 +188,7 @@ function App() {
     setAnswerContent(<div className="loading">Computing...</div>);
 
     try {
-      const res = await fetch('https://pascal-app-backend.onrender.com/api/expand', {
+      const res = await fetch('${API_BASE}/api/expand', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ expression: exprValue }),
