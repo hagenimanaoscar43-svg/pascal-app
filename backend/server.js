@@ -6,16 +6,15 @@ import cors from "cors";
 import pg from "pg";
 
 const { Pool } = pg;
-
 const app = express();
 
 /* ================= MIDDLEWARE ================= */
 
-// ✅ FIXED CORS (works for both local + Render frontend)
+// ✅ CORS FIX (safe for production + local)
 app.use(cors({
   origin: [
     "http://localhost:5173",
-    "https://your-frontend-name.onrender.com" // 🔁 CHANGE THIS
+    "https:pascal-app.com" // 🔁 CHANGE THIS after deployment
   ],
   credentials: true
 }));
@@ -31,7 +30,10 @@ const pool = new Pool({
     : false
 });
 
-console.log("DB connected:", !!process.env.DATABASE_URL);
+// ✅ REAL DB CHECK
+pool.query("SELECT 1")
+  .then(() => console.log("✅ Database connected"))
+  .catch(err => console.error("❌ Database error:", err.message));
 
 /* ================= INIT DB ================= */
 
@@ -64,7 +66,7 @@ app.get("/", (req, res) => {
 
 /* ---------- HISTORY ---------- */
 
-// Get all history
+// GET all history
 app.get("/api/history", async (req, res) => {
   try {
     const data = await pool.query(
@@ -76,7 +78,7 @@ app.get("/api/history", async (req, res) => {
   }
 });
 
-// Get one history item
+// GET one history item
 app.get("/api/history/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -92,7 +94,7 @@ app.get("/api/history/:id", async (req, res) => {
   }
 });
 
-// Save history
+// POST history
 app.post("/api/history", async (req, res) => {
   try {
     const { type, input, result } = req.body;
@@ -110,7 +112,7 @@ app.post("/api/history", async (req, res) => {
   }
 });
 
-// Clear history
+// DELETE history
 app.delete("/api/history", async (req, res) => {
   try {
     await pool.query("DELETE FROM history");
@@ -158,16 +160,17 @@ app.post("/api/expand", (req, res) => {
   try {
     const expression = req.body.expression;
 
-    const match = expression.match(/\((\w)\+(\w)\)\^(\d+)/);
+    // ✅ FIXED regex (supports (anything)^n)
+    const match = expression.match(/\((.+)\)\^(\d+)/);
 
     if (!match) {
       return res.status(400).json({
-        error: "Invalid format. Use (x+y)^n"
+        error: "Invalid format. Use (expression)^n"
       });
     }
 
-    const [, a, b, nStr] = match;
-    const n = parseInt(nStr);
+    const base = match[1];
+    const n = parseInt(match[2]);
 
     const factorial = (x) => (x <= 1 ? 1 : x * factorial(x - 1));
 
@@ -179,14 +182,13 @@ app.post("/api/expand", (req, res) => {
     for (let k = 0; k <= n; k++) {
       terms.push({
         coeff: comb(n, k),
-        varA: a,
-        powA: n - k,
-        varB: b,
-        powB: k
+        raw: base,
+        index: k
       });
     }
 
-    res.json({ terms });
+    res.json({ expression, terms });
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
