@@ -11,7 +11,8 @@ const app = express();
 /* ================= MIDDLEWARE ================= */
 app.use(cors({
   origin: [
-    "https://pascal-app.onrender.com" 
+    "http://localhost:5173",           // Keep for local development
+    "https://pascal-app.onrender.com"  // ADD your live frontend URL
   ],
   credentials: true
 }));
