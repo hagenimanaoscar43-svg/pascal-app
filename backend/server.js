@@ -7,39 +7,43 @@ import pg from "pg";
 
 const { Pool } = pg;
 const app = express();
+
 /* ================= MIDDLEWARE ================= */
-// ✅ CORRECT CORS CONFIGURATION
+// CORS Configuration - WORKING VERSION
 const allowedOrigins = [
   'http://localhost:5173',           // Local development
-  'https://pascal-app.onrender.com'  // Your live frontend
+  'https://pascal-app.onrender.com'  // Live frontend
 ];
 
-app.use(cors({
-  origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) === -1) {
-      console.log('Blocked origin:', origin);  // This helps debugging
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      return callback(new Error(msg), false);
-    }
-    console.log('Allowed origin:', origin);  // This helps debugging
-    return callback(null, true);
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+// Debug: Log that CORS config is loading
+console.log('🔧 Loading CORS configuration...');
+console.log('✅ Allowed origins:', allowedOrigins);
 
-// Handle preflight requests
-app.options('*', cors());
+// Simple CORS middleware (no function complexity)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // Check if the origin is allowed
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    console.log('✅ CORS allowed for:', origin);
+  } else {
+    console.log('❌ CORS blocked for:', origin);
+  }
+  
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  
+  next();
+});
 
 app.use(express.json());
-
-/* ================= DATABASE ================= */
-// ... rest of your database code remains the same
-
 /* ================= DATABASE ================= */
 
 const pool = new Pool({
