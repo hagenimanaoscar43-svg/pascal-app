@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
 
 const COLORS = ['#7c5cfc', '#fc5c7d', '#5cf8c8', '#fcd75c', '#fc955c', '#5cc8fc', '#c85cfc'];
-const API_BASE = "https://pascal-app-backend.onrender.com";  // ✅ Fixed: Use API_BASE consistently
+const API_BASE = "https://pascal-backend-v2.onrender.com";  // ✅ Fixed: Use API_BASE consistently
 
 // Remove this test fetch - it's causing errors
 // fetch(`${API_BASE}/questions`)  // This endpoint doesn't exist!
