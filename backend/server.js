@@ -7,17 +7,38 @@ import pg from "pg";
 
 const { Pool } = pg;
 const app = express();
-
 /* ================= MIDDLEWARE ================= */
+// ✅ CORRECT CORS CONFIGURATION
+const allowedOrigins = [
+  'http://localhost:5173',           // Local development
+  'https://pascal-app.onrender.com'  // Your live frontend
+];
+
 app.use(cors({
-  origin: [
-    "http://localhost:5173",           // Keep for local development
-    "https://pascal-app.onrender.com"  // ADD your live frontend URL
-  ],
-  credentials: true
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) === -1) {
+      console.log('Blocked origin:', origin);  // This helps debugging
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    console.log('Allowed origin:', origin);  // This helps debugging
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+// Handle preflight requests
+app.options('*', cors());
+
 app.use(express.json());
+
+/* ================= DATABASE ================= */
+// ... rest of your database code remains the same
 
 /* ================= DATABASE ================= */
 
