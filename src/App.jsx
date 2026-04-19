@@ -1,9 +1,18 @@
-const API_BASE = "https://pascal-app-backend.onrender.com";
+const API_URL = import.meta.env.VITE_API_URL;
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
 
 const COLORS = ['#7c5cfc', '#fc5c7d', '#5cf8c8', '#fcd75c', '#fc955c', '#5cc8fc', '#c85cfc'];
 
+
+fetch(`${API_URL}/api/ask`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({ question })
+});
 const escHtml = (s) => {
   if (!s) return '';
   return String(s)

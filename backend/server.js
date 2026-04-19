@@ -9,8 +9,6 @@ const { Pool } = pg;
 const app = express();
 
 /* ================= MIDDLEWARE ================= */
-
-// ✅ CORS (fix for frontend + local)
 app.use(cors({
   origin: [
     "https://pascal-app.onrender.com" // 🔁 change to your real frontend URL
