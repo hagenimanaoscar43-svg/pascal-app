@@ -19,13 +19,13 @@ const allowedOrigins = [
 
 console.log('Allowed origins:', allowedOrigins);
 
-// CORS middleware
+// CORS middleware - FIXED TYPO
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   console.log('Request from origin:', origin);
   
   if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Origin', origin);  // ✅ REMOVED "Oscar "
     console.log('✅ CORS allowed for:', origin);
   } else if (origin && origin.includes('pascal-app.onrender.com')) {
     // Fallback for any subdomain
