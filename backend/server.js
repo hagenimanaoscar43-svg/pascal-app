@@ -9,17 +9,17 @@ const { Pool } = pg;
 const app = express();
 
 /* ================= MIDDLEWARE ================= */
-// CORS Configuration - WORKING VERSION
+// CORS Configuration - PRODUCTION READY
 const allowedOrigins = [
-  'http://localhost:5173',           // Local development
-  'https://pascal-app.onrender.com'  // Live frontend
+  'http://localhost:5173',           // Local development (Vite)
+  'https://pascal-app.onrender.com'  // Live frontend on Render
 ];
 
 // Debug: Log that CORS config is loading
 console.log('🔧 Loading CORS configuration...');
 console.log('✅ Allowed origins:', allowedOrigins);
 
-// Simple CORS middleware (no function complexity)
+// CORS middleware
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   
@@ -27,6 +27,10 @@ app.use((req, res, next) => {
   if (allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
     console.log('✅ CORS allowed for:', origin);
+  } else if (!origin) {
+    // Allow requests with no origin (like from Postman or curl)
+    res.header('Access-Control-Allow-Origin', '*');
+    console.log('✅ CORS allowed for no-origin request');
   } else {
     console.log('❌ CORS blocked for:', origin);
   }
@@ -44,6 +48,7 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
+
 /* ================= DATABASE ================= */
 
 const pool = new Pool({
@@ -253,7 +258,7 @@ app.post("/api/expand", (req, res) => {
 
 /* ================= START SERVER ================= */
 
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
