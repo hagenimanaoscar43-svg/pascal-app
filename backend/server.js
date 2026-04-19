@@ -11,7 +11,7 @@ const app = express();
 /* ================= MIDDLEWARE ================= */
 app.use(cors({
   origin: [
-    "https://pascal-app.onrender.com" // 🔁 change to your real frontend URL
+    "https://pascal-app.onrender.com" 
   ],
   credentials: true
 }));
@@ -227,7 +227,7 @@ app.post("/api/expand", (req, res) => {
 
 /* ================= START SERVER ================= */
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT;
 
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
