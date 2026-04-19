@@ -10,11 +10,10 @@ const app = express();
 
 /* ================= MIDDLEWARE ================= */
 
-// ✅ CORS FIX (safe for production + local)
+// ✅ CORS (fix for frontend + local)
 app.use(cors({
   origin: [
-    "http://localhost:5173",
-    "https:pascal-app.com" // 🔁 CHANGE THIS after deployment
+    "https://pascal-app.onrender.com" // 🔁 change to your real frontend URL
   ],
   credentials: true
 }));
@@ -30,7 +29,7 @@ const pool = new Pool({
     : false
 });
 
-// ✅ REAL DB CHECK
+// Real DB check
 pool.query("SELECT 1")
   .then(() => console.log("✅ Database connected"))
   .catch(err => console.error("❌ Database error:", err.message));
@@ -64,9 +63,9 @@ app.get("/", (req, res) => {
   res.send("Pascal Backend Running 🚀");
 });
 
-/* ---------- HISTORY ---------- */
+/* ================= HISTORY ================= */
 
-// GET all history
+// Get all history
 app.get("/api/history", async (req, res) => {
   try {
     const data = await pool.query(
@@ -78,7 +77,7 @@ app.get("/api/history", async (req, res) => {
   }
 });
 
-// GET one history item
+// Get one history item
 app.get("/api/history/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -94,7 +93,7 @@ app.get("/api/history/:id", async (req, res) => {
   }
 });
 
-// POST history
+// Save history
 app.post("/api/history", async (req, res) => {
   try {
     const { type, input, result } = req.body;
@@ -112,7 +111,7 @@ app.post("/api/history", async (req, res) => {
   }
 });
 
-// DELETE history
+// Clear history
 app.delete("/api/history", async (req, res) => {
   try {
     await pool.query("DELETE FROM history");
@@ -122,7 +121,7 @@ app.delete("/api/history", async (req, res) => {
   }
 });
 
-/* ---------- PASCAL TRIANGLE ---------- */
+/* ================= PASCAL TRIANGLE ================= */
 
 app.post("/api/pascal", (req, res) => {
   try {
@@ -154,40 +153,74 @@ app.post("/api/pascal", (req, res) => {
   }
 });
 
-/* ---------- BINOMIAL EXPANSION ---------- */
+/* ================= BINOMIAL EXPANSION ================= */
 
 app.post("/api/expand", (req, res) => {
   try {
     const expression = req.body.expression;
 
-    // ✅ FIXED regex (supports (anything)^n)
+    // Match: (something)^n
     const match = expression.match(/\((.+)\)\^(\d+)/);
 
     if (!match) {
       return res.status(400).json({
-        error: "Invalid format. Use (expression)^n"
+        error: "Invalid format. Use (ax^n + by^m)^p"
       });
     }
 
-    const base = match[1];
-    const n = parseInt(match[2]);
+    const inside = match[1];
+    const power = parseInt(match[2]);
 
-    const factorial = (x) => (x <= 1 ? 1 : x * factorial(x - 1));
+    const parts = inside.split("+").map(s => s.trim());
+
+    if (parts.length !== 2) {
+      return res.status(400).json({
+        error: "Only binomial expressions supported: (A + B)^n"
+      });
+    }
+
+    // Parse term
+    const parseTerm = (term) => {
+      const m = term.match(/([0-9]*)?([a-zA-Z])(\^(\d+))?/);
+
+      return {
+        coeff: parseInt(m?.[1] || "1"),
+        variable: m?.[2],
+        power: parseInt(m?.[4] || "1")
+      };
+    };
+
+    const A = parseTerm(parts[0]);
+    const B = parseTerm(parts[1]);
+
+    const factorial = (n) => (n <= 1 ? 1 : n * factorial(n - 1));
 
     const comb = (n, r) =>
       factorial(n) / (factorial(r) * factorial(n - r));
 
     let terms = [];
 
-    for (let k = 0; k <= n; k++) {
+    for (let k = 0; k <= power; k++) {
+      const coeff =
+        comb(power, k) *
+        Math.pow(A.coeff, power - k) *
+        Math.pow(B.coeff, k);
+
       terms.push({
-        coeff: comb(n, k),
-        raw: base,
+        coeff,
+        varA: A.variable,
+        powA: A.power * (power - k),
+        varB: B.variable,
+        powB: B.power * k,
         index: k
       });
     }
 
-    res.json({ expression, terms });
+    res.json({
+      expression,
+      power,
+      terms
+    });
 
   } catch (err) {
     res.status(500).json({ error: err.message });

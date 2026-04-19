@@ -242,9 +242,12 @@ function App() {
       
       await addToHistory('expand', exprValue, data);
     } catch (err) {
-      console.error(err);
-      setAnswerContent(<div className="error">⚠ Server error. Make sure backend is running on port 5000</div>);
-    } finally {
+      setAnswerContent(
+  <div className="error">
+    ⚠ Server error. Please check backend connection.
+  </div>
+);}
+ finally {
       setIsLoading(false);
     }
   }, [addToHistory]);
