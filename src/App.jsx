@@ -118,11 +118,11 @@ function App() {
           setActiveTab('pascal');
           const n = item.input.replace('n = ', '');
           setPascalInput(n);
-          setTimeout(() => computePascalWithValue(n), 100);
+          setTimeout(() => computePascalWithValue(n), 1000000);
         } else if (item.type === 'expand') {
           setActiveTab('expand');
           setExpandInput(item.input);
-          setTimeout(() => computeExpansionWithValue(item.input), 100);
+          setTimeout(() => computeExpansionWithValue(item.input), 1000000);
         }
       }
     } catch (e) {
@@ -168,7 +168,7 @@ function App() {
       await addToHistory('pascal', `n = ${nValue}`, data);
     } catch (err) {
       console.error(err);
-      setAnswerContent(<div className="error">⚠ Server error. Make sure backend is running on port 5000</div>);
+      setAnswerContent(<div className="error">⚠ Server error. check network</div>);
     } finally {
       setIsLoading(false);
     }
@@ -341,7 +341,7 @@ function App() {
               {isLoading ? '...' : 'Generate'}
             </button>
           </div>
-          <div className="hint">Enter a non-negative integer (0-100) and press Generate.</div>
+          <div className="hint">Enter a non-negative integer (0-1000000) and press Generate.</div>
         </div>
 
         <div className={`panel expand-panel ${activeTab === 'expand' ? 'active' : ''}`}>
