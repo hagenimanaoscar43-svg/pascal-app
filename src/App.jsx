@@ -1,8 +1,11 @@
-const API_BASE = "https://pascal-app-backend.onrender.com";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
 
 const COLORS = ['#7c5cfc', '#fc5c7d', '#5cf8c8', '#fcd75c', '#fc955c', '#5cc8fc', '#c85cfc'];
+const API_BASE = "https://pascal-app-backend.onrender.com";  // ✅ Fixed: Use API_BASE consistently
+
+// Remove this test fetch - it's causing errors
+// fetch(`${API_BASE}/questions`)  // This endpoint doesn't exist!
 
 const escHtml = (s) => {
   if (!s) return '';
@@ -116,13 +119,14 @@ function App() {
       if (item) {
         if (item.type === 'pascal') {
           setActiveTab('pascal');
+          // Extract just the number from "n = 5" format
           const n = item.input.replace('n = ', '');
           setPascalInput(n);
-          setTimeout(() => computePascalWithValue(n), 1000000);
+          setTimeout(() => computePascalWithValue(n), 100);
         } else if (item.type === 'expand') {
           setActiveTab('expand');
           setExpandInput(item.input);
-          setTimeout(() => computeExpansionWithValue(item.input), 1000000);
+          setTimeout(() => computeExpansionWithValue(item.input), 100);
         }
       }
     } catch (e) {
@@ -143,7 +147,7 @@ function App() {
       const res = await fetch(`${API_BASE}/api/pascal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ n: nValue }),
+        body: JSON.stringify({ n: parseInt(nValue) }),
       });
       const data = await res.json();
 
@@ -168,7 +172,7 @@ function App() {
       await addToHistory('pascal', `n = ${nValue}`, data);
     } catch (err) {
       console.error(err);
-      setAnswerContent(<div className="error">⚠ Server error. check network</div>);
+      setAnswerContent(<div className="error">⚠ Server error. Please check backend connection.</div>);
     } finally {
       setIsLoading(false);
     }
@@ -243,11 +247,11 @@ function App() {
       await addToHistory('expand', exprValue, data);
     } catch (err) {
       setAnswerContent(
-  <div className="error">
-    ⚠ Server error. Please check backend connection.
-  </div>
-);}
- finally {
+        <div className="error">
+          ⚠ Server error. Please check backend connection.
+        </div>
+      );
+    } finally {
       setIsLoading(false);
     }
   }, [addToHistory]);
@@ -341,7 +345,7 @@ function App() {
               {isLoading ? '...' : 'Generate'}
             </button>
           </div>
-          <div className="hint">Enter a non-negative integer (0-1000000) and press Generate.</div>
+          <div className="hint">Enter a non-negative integer (0-100) and press Generate.</div>
         </div>
 
         <div className={`panel expand-panel ${activeTab === 'expand' ? 'active' : ''}`}>

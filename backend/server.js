@@ -1,264 +1,119 @@
-import dotenv from "dotenv";
-dotenv.config();
-
 import express from "express";
 import cors from "cors";
 import pg from "pg";
+import dotenv from "dotenv";
 
-const { Pool } = pg;
+dotenv.config();
+
 const app = express();
-
-/* ================= MIDDLEWARE ================= */
-// CORS Configuration - PRODUCTION READY
-const allowedOrigins = [
-  'http://localhost:5173',           // Local development (Vite)
-  'https://pascal-app.onrender.com'  // Live frontend on Render
-];
-
-// Debug: Log that CORS config is loading
-console.log('🔧 Loading CORS configuration...');
-console.log('✅ Allowed origins:', allowedOrigins);
-
-// CORS middleware
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  
-  // Check if the origin is allowed
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-    console.log('✅ CORS allowed for:', origin);
-  } else if (!origin) {
-    // Allow requests with no origin (like from Postman or curl)
-    res.header('Access-Control-Allow-Origin', '*');
-    console.log('✅ CORS allowed for no-origin request');
-  } else {
-    console.log('❌ CORS blocked for:', origin);
-  }
-  
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  
-  next();
-});
-
 app.use(express.json());
 
-/* ================= DATABASE ================= */
+/* =========================
+   🔧 CORS CONFIGURATION
+========================= */
+console.log("🔧 Loading CORS configuration...");
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://pascal-app.onrender.com"
+];
+
+console.log("✅ Allowed origins:", allowedOrigins);
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // allow requests with no origin (like Postman)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.log("❌ Blocked by CORS:", origin);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true,
+  })
+);
+
+/* =========================
+   🔗 DATABASE CONNECTION
+========================= */
+const { Pool } = pg;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL
-    ? { rejectUnauthorized: false }
-    : false
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
 
-// Real DB check
-pool.query("SELECT 1")
+pool.connect()
   .then(() => console.log("✅ Database connected"))
-  .catch(err => console.error("❌ Database error:", err.message));
+  .catch((err) => console.error("❌ DB connection error:", err));
 
-/* ================= INIT DB ================= */
-
+/* =========================
+   📦 INIT DATABASE TABLE
+========================= */
 const initDB = async () => {
   try {
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS history (
+      CREATE TABLE IF NOT EXISTS questions (
         id SERIAL PRIMARY KEY,
-        type VARCHAR(50),
-        input TEXT,
-        output TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
+        question TEXT,
+        answer TEXT
+      );
     `);
-
     console.log("✅ Database initialized");
   } catch (err) {
-    console.error("❌ DB init error:", err.message);
+    console.error("❌ DB INIT ERROR:", err);
   }
 };
 
 initDB();
 
-/* ================= ROUTES ================= */
+/* =========================
+   🚀 ROUTES
+========================= */
 
-// Home
+// test route
 app.get("/", (req, res) => {
-  res.send("Pascal Backend Running 🚀");
+  res.send("Backend working 🚀");
 });
 
-/* ================= HISTORY ================= */
-
-// Get all history
-app.get("/api/history", async (req, res) => {
+// get all questions
+app.get("/questions", async (req, res) => {
   try {
-    const data = await pool.query(
-      "SELECT * FROM history ORDER BY id DESC"
-    );
-    res.json(data.rows);
+    const result = await pool.query("SELECT * FROM questions ORDER BY id DESC");
+    res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// Get one history item
-app.get("/api/history/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
+// add question
+app.post("/questions", async (req, res) => {
+  const { question, answer } = req.body;
 
-    const data = await pool.query(
-      "SELECT * FROM history WHERE id = $1",
-      [id]
+  try {
+    const result = await pool.query(
+      "INSERT INTO questions (question, answer) VALUES ($1, $2) RETURNING *",
+      [question, answer]
     );
 
-    res.json(data.rows[0] || null);
+    res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Insert failed" });
   }
 });
 
-// Save history
-app.post("/api/history", async (req, res) => {
-  try {
-    const { type, input, result } = req.body;
-
-    const data = await pool.query(
-      `INSERT INTO history (type, input, output)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
-      [type, input, JSON.stringify(result)]
-    );
-
-    res.json(data.rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Clear history
-app.delete("/api/history", async (req, res) => {
-  try {
-    await pool.query("DELETE FROM history");
-    res.json({ message: "History cleared" });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ================= PASCAL TRIANGLE ================= */
-
-app.post("/api/pascal", (req, res) => {
-  try {
-    const num = parseInt(req.body.n);
-
-    if (isNaN(num) || num < 0) {
-      return res.status(400).json({ error: "Invalid n value" });
-    }
-
-    let rows = [];
-
-    for (let i = 0; i <= num; i++) {
-      let row = [];
-
-      for (let j = 0; j <= i; j++) {
-        if (j === 0 || j === i) {
-          row.push(1);
-        } else {
-          row.push(rows[i - 1][j - 1] + rows[i - 1][j]);
-        }
-      }
-
-      rows.push(row);
-    }
-
-    res.json({ rows });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ================= BINOMIAL EXPANSION ================= */
-
-app.post("/api/expand", (req, res) => {
-  try {
-    const expression = req.body.expression;
-
-    // Match: (something)^n
-    const match = expression.match(/\((.+)\)\^(\d+)/);
-
-    if (!match) {
-      return res.status(400).json({
-        error: "Invalid format. Use (ax^n + by^m)^p"
-      });
-    }
-
-    const inside = match[1];
-    const power = parseInt(match[2]);
-
-    const parts = inside.split("+").map(s => s.trim());
-
-    if (parts.length !== 2) {
-      return res.status(400).json({
-        error: "Only binomial expressions supported: (A + B)^n"
-      });
-    }
-
-    // Parse term
-    const parseTerm = (term) => {
-      const m = term.match(/([0-9]*)?([a-zA-Z])(\^(\d+))?/);
-
-      return {
-        coeff: parseInt(m?.[1] || "1"),
-        variable: m?.[2],
-        power: parseInt(m?.[4] || "1")
-      };
-    };
-
-    const A = parseTerm(parts[0]);
-    const B = parseTerm(parts[1]);
-
-    const factorial = (n) => (n <= 1 ? 1 : n * factorial(n - 1));
-
-    const comb = (n, r) =>
-      factorial(n) / (factorial(r) * factorial(n - r));
-
-    let terms = [];
-
-    for (let k = 0; k <= power; k++) {
-      const coeff =
-        comb(power, k) *
-        Math.pow(A.coeff, power - k) *
-        Math.pow(B.coeff, k);
-
-      terms.push({
-        coeff,
-        varA: A.variable,
-        powA: A.power * (power - k),
-        varB: B.variable,
-        powB: B.power * k,
-        index: k
-      });
-    }
-
-    res.json({
-      expression,
-      power,
-      terms
-    });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ================= START SERVER ================= */
-
-const PORT = process.env.PORT || 3000;
+/* =========================
+   🌐 SERVER START
+========================= */
+const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
