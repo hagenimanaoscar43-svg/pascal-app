@@ -136,6 +136,12 @@ function App() {
       return;
     }
 
+    const n = parseInt(nValue);
+    if (n < 0 || n > 100000) {
+      setAnswerContent(<div className="error">⚠ n must be between 0 and 100,000</div>);
+      return;
+    }
+
     setIsLoading(true);
     setAnswerContent(<div className="loading">Computing...</div>);
 
@@ -143,7 +149,7 @@ function App() {
       const res = await fetch(`${API_BASE}/api/pascal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ n: parseInt(nValue) }),
+        body: JSON.stringify({ n: n }),
       });
       const data = await res.json();
 
@@ -154,14 +160,32 @@ function App() {
 
       let html = '<div class="pascal-display">';
       if (data.rows && Array.isArray(data.rows)) {
-        data.rows.forEach((row, i) => {
-          const col = COLORS[i % COLORS.length];
-          html += '<div class="pascal-row">';
-          row.forEach(v => {
-            html += `<div class="pascal-cell" style="background:${col}22;color:${col};border:1px solid ${col}55">${v}</div>`;
+        // For large n, show preview
+        if (n > 20) {
+          html += `<div class="info-message">Showing first 20 rows of ${n+1} total rows:</div>`;
+          data.rows.slice(0, 20).forEach((row, i) => {
+            const col = COLORS[i % COLORS.length];
+            html += '<div class="pascal-row">';
+            const displayRow = row.length > 10 ? row.slice(0, 10) : row;
+            displayRow.forEach(v => {
+              html += `<div class="pascal-cell" style="background:${col}22;color:${col};border:1px solid ${col}55">${v}</div>`;
+            });
+            if (row.length > 10) {
+              html += `<div class="pascal-cell more">+${row.length - 10} more</div>`;
+            }
+            html += '</div>';
           });
-          html += '</div>';
-        });
+          html += `<div class="info-message">... and ${n - 19} more rows</div>`;
+        } else {
+          data.rows.forEach((row, i) => {
+            const col = COLORS[i % COLORS.length];
+            html += '<div class="pascal-row">';
+            row.forEach(v => {
+              html += `<div class="pascal-cell" style="background:${col}22;color:${col};border:1px solid ${col}55">${v}</div>`;
+            });
+            html += '</div>';
+          });
+        }
       }
       html += '</div>';
       setAnswerContent(<div dangerouslySetInnerHTML={{ __html: html }} />);
@@ -331,7 +355,7 @@ function App() {
               type="number"
               id="pascal-input"
               min="0"
-              max="100"
+              max="100000"
               placeholder="Enter degree n (e.g. 5)"
               autoComplete="off"
               value={pascalInput}
@@ -341,7 +365,7 @@ function App() {
               {isLoading ? '...' : 'Generate'}
             </button>
           </div>
-          <div className="hint">Enter a non-negative integer (0-100) and press Generate.</div>
+          <div className="hint">Enter a non-negative integer (0-100,000) and press Generate.</div>
         </div>
 
         <div className={`panel expand-panel ${activeTab === 'expand' ? 'active' : ''}`}>
@@ -350,7 +374,7 @@ function App() {
             <input
               type="text"
               id="expand-input"
-              placeholder="e.g. (2x^2+3y^3)^4 or (x+y)^3"
+              placeholder="e.g. (2x^2+3y^3)^4 or (x+y)^1000"
               autoComplete="off"
               value={expandInput}
               onChange={(e) => setExpandInput(e.target.value)}
@@ -359,7 +383,7 @@ function App() {
               {isLoading ? '...' : 'Expand'}
             </button>
           </div>
-          <div className="hint">Format: (ax^n + by^m)^p | Supports coefficients and exponents</div>
+          <div className="hint">Format: (ax^n + by^m)^p | Supports coefficients and exponents, p up to 1000</div>
         </div>
 
         <div className={`panel history-panel ${activeTab === 'history' ? 'active' : ''}`}>
