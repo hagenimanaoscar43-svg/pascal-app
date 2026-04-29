@@ -148,21 +148,79 @@ function App() {
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [backendStatus, setBackendStatus] = useState('checking');
   const backendAvailable = useRef(true);
-  const timeoutRef = useRef(null);
   const isMounted = useRef(true);
 
-  // Cleanup timeouts on unmount
+  // Cleanup on unmount
   useEffect(() => {
     isMounted.current = true;
     return () => {
       isMounted.current = false;
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
     };
   }, []);
 
-  // Save to local storage
+  // Load history from backend
+  const loadHistory = useCallback(async () => {
+    if (!isMounted.current) return;
+    
+    setIsHistoryLoading(true);
+    setBackendStatus('loading');
+    
+    try {
+      console.log('Fetching history from:', `${API_BASE}/api/history`);
+      const res = await fetch(`${API_BASE}/api/history`);
+      
+      if (res.ok) {
+        const response = await res.json();
+        console.log('History response:', response);
+        
+        if (isMounted.current) {
+          // Handle the response structure: { success, storage, count, data }
+          if (response.data && Array.isArray(response.data)) {
+            // Transform database records to match frontend expected format
+            const transformedHistory = response.data.map(record => ({
+              id: record.id,
+              type: record.type,
+              input: record.input,
+              result: record.result,
+              created_at: record.created_at
+            }));
+            setHistory(transformedHistory);
+            console.log(`Loaded ${transformedHistory.length} items from ${response.storage}`);
+            setBackendStatus('connected');
+            backendAvailable.current = true;
+          } else if (Array.isArray(response)) {
+            // Fallback for direct array response
+            setHistory(response);
+            setBackendStatus('connected');
+          } else {
+            setHistory([]);
+            setBackendStatus('connected');
+          }
+        }
+      } else {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } catch (error) {
+      console.error('Backend error:', error);
+      setBackendStatus('fallback');
+      backendAvailable.current = false;
+      
+      // Fallback to local storage
+      const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
+      if (isMounted.current && stored) {
+        setHistory(JSON.parse(stored));
+        console.log('Using local storage fallback');
+      } else if (isMounted.current) {
+        setHistory([]);
+      }
+    } finally {
+      if (isMounted.current) {
+        setIsHistoryLoading(false);
+      }
+    }
+  }, []);
+
+  // Save to local storage (backup)
   const saveToLocalHistory = useCallback((type, input, result) => {
     const newEntry = {
       id: Date.now(),
@@ -178,116 +236,63 @@ function App() {
     });
   }, []);
 
-  // Load history from backend or local storage
-  const loadHistory = useCallback(async () => {
-    if (!isMounted.current) return;
-    
-    setIsHistoryLoading(true);
-    setBackendStatus('loading');
-    
-    try {
-      console.log('Fetching history from:', `${API_BASE}/api/history`);
-      const res = await fetch(`${API_BASE}/api/history`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      console.log('Response status:', res.status);
-      
-      if (res.ok) {
-        const data = await res.json();
-        console.log('History data received:', data);
-        if (isMounted.current) {
-          setHistory(Array.isArray(data) ? data : []);
-          backendAvailable.current = true;
-          setBackendStatus('connected');
-        }
-      } else {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-    } catch (error) {
-      console.error('Backend error:', error);
-      backendAvailable.current = false;
-      setBackendStatus('fallback');
-      
-      // Try to load from local storage
-      const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
-      console.log('Local storage data:', stored);
-      if (isMounted.current) {
-        if (stored) {
-          const parsedHistory = JSON.parse(stored);
-          setHistory(parsedHistory);
-          console.log('Loaded from local storage:', parsedHistory.length, 'items');
-        } else {
-          setHistory([]);
-          console.log('No local storage data found');
-        }
-      }
-    } finally {
-      if (isMounted.current) {
-        setIsHistoryLoading(false);
-      }
-    }
-  }, []);
-
   // Add to history
   const addToHistory = useCallback(async (type, input, resultData) => {
-    console.log('Adding to history:', { type, input });
+    const newEntry = {
+      id: Date.now(),
+      type,
+      input,
+      result: resultData,
+      created_at: new Date().toISOString(),
+    };
     
+    // Update local state immediately
+    setHistory(prev => {
+      const updated = [newEntry, ...prev].slice(0, 50);
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+      return updated;
+    });
+    
+    // Try to save to backend
     if (backendAvailable.current) {
       try {
-        const response = await fetch(`${API_BASE}/api/history`, {
+        await fetch(`${API_BASE}/api/history`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type, input, result: resultData }),
         });
-        
-        if (response.ok) {
-          console.log('Successfully saved to backend');
-          loadHistory();
-        } else {
-          throw new Error('Failed to save to backend');
-        }
+        console.log('Saved to backend successfully');
+        // Reload to get the server-generated ID
+        setTimeout(() => loadHistory(), 500);
       } catch (error) {
         console.error('Failed to save to backend:', error);
         backendAvailable.current = false;
         setBackendStatus('fallback');
-        saveToLocalHistory(type, input, resultData);
       }
-    } else {
-      console.log('Saving to local storage instead');
-      saveToLocalHistory(type, input, resultData);
     }
-  }, [loadHistory, saveToLocalHistory]);
+  }, [loadHistory]);
 
   // Clear all history
   const clearHistory = useCallback(async () => {
     if (!window.confirm('Delete all history? This cannot be undone.')) return;
 
+    // Clear local storage
+    localStorage.removeItem(HISTORY_STORAGE_KEY);
+    setHistory([]);
+    
+    // Clear backend if available
     if (backendAvailable.current) {
       try {
         await fetch(`${API_BASE}/api/history`, { method: 'DELETE' });
-        await loadHistory();
+        console.log('Cleared backend history');
       } catch (error) {
-        console.error('Failed to clear backend history:', error);
+        console.error('Failed to clear backend:', error);
         backendAvailable.current = false;
-        localStorage.removeItem(HISTORY_STORAGE_KEY);
-        if (isMounted.current) {
-          setHistory([]);
-        }
-      }
-    } else {
-      localStorage.removeItem(HISTORY_STORAGE_KEY);
-      if (isMounted.current) {
-        setHistory([]);
       }
     }
-    if (isMounted.current) {
-      setAnswerContent(<div className="answer-placeholder">→ Results will appear here</div>);
-    }
-  }, [loadHistory]);
+    
+    setAnswerContent(<div className="answer-placeholder">→ Results will appear here</div>);
+  }, []);
 
   // Compute Pascal triangle
   const computePascalWithValue = useCallback(async (nValue) => {
@@ -400,45 +405,26 @@ function App() {
   }, [expandInput, computeExpansionWithValue]);
 
   // Reload history item
-  const reloadHistoryItem = useCallback((id) => {
-    const loadItem = async () => {
-      try {
-        let item;
-        if (backendAvailable.current) {
-          const res = await fetch(`${API_BASE}/api/history/${id}`);
-          if (!res.ok) throw new Error('Failed to fetch');
-          item = await res.json();
-        } else {
-          item = history.find(h => h.id === id);
+  const reloadHistoryItem = useCallback((item) => {
+    if (item.type === 'pascal') {
+      setActiveTab('pascal');
+      const n = item.input.replace('n = ', '');
+      setPascalInput(n);
+      setTimeout(() => {
+        if (isMounted.current) {
+          computePascalWithValue(n);
         }
-        
-        if (item && isMounted.current) {
-          if (item.type === 'pascal') {
-            setActiveTab('pascal');
-            const n = item.input.replace('n = ', '');
-            setPascalInput(n);
-            setTimeout(() => {
-              if (isMounted.current) {
-                computePascalWithValue(n);
-              }
-            }, 100);
-          } else if (item.type === 'expand') {
-            setActiveTab('expand');
-            setExpandInput(item.input);
-            setTimeout(() => {
-              if (isMounted.current) {
-                computeExpansionWithValue(item.input);
-              }
-            }, 100);
-          }
+      }, 100);
+    } else if (item.type === 'expand') {
+      setActiveTab('expand');
+      setExpandInput(item.input);
+      setTimeout(() => {
+        if (isMounted.current) {
+          computeExpansionWithValue(item.input);
         }
-      } catch (e) {
-        console.error('Failed to reload history item', e);
-      }
-    };
-    
-    loadItem();
-  }, [history, computePascalWithValue, computeExpansionWithValue]);
+      }, 100);
+    }
+  }, [computePascalWithValue, computeExpansionWithValue]);
 
   // Handle tab change
   const handleTabChange = useCallback((tab) => {
@@ -466,13 +452,6 @@ function App() {
   // Load history on mount
   useEffect(() => {
     loadHistory();
-    
-    // Also check if there's any data in localStorage on mount
-    const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      console.log('Found existing localStorage data:', parsed.length, 'items');
-    }
   }, [loadHistory]);
 
   // Format date for display
@@ -530,14 +509,6 @@ function App() {
           </button>
         </div>
 
-        {/* Backend Status Indicator */}
-        <div className={`backend-status ${backendStatus}`}>
-          {backendStatus === 'connected' && '✅ Connected to server'}
-          {backendStatus === 'fallback' && '💾 Using local storage (offline mode)'}
-          {backendStatus === 'loading' && '🔄 Connecting...'}
-          {backendStatus === 'checking' && '🔍 Checking connection...'}
-        </div>
-
         <div className={`panel pascal-panel ${activeTab === 'pascal' ? 'active' : ''}`}>
           <div className="panel-title">Pascal Triangle</div>
           <div className="input-row">
@@ -584,34 +555,31 @@ function App() {
               <div className="loading">📡 Loading from database...</div>
             ) : history.length === 0 ? (
               <div className="history-empty">
-                📭 No calculations yet. 
+                📭 No calculations yet.
                 <br />
                 <small>Generate a Pascal triangle or expand an expression to see it here!</small>
                 <br />
-                <small style={{color: '#666'}}>Backend status: {backendStatus}</small>
+                <small style={{color: '#6a6a8a', fontSize: '11px'}}>Status: {backendStatus}</small>
               </div>
             ) : (
-              <>
-                <div className="history-count">📊 {history.length} item(s) in history</div>
-                {history.map((item) => (
-                  <div
-                    key={item.id}
-                    className="history-item"
-                    onClick={() => reloadHistoryItem(item.id)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && reloadHistoryItem(item.id)}
-                  >
-                    <div className="h-left">
-                      <div className={`h-type ${item.type}`}>
-                        {item.type === 'pascal' ? '▲ Pascal Triangle' : '∑ Binomial Expansion'}
-                      </div>
-                      <div className="h-input">{escapeHtmlSimple(item.input)}</div>
+              history.map((item) => (
+                <div
+                  key={item.id}
+                  className="history-item"
+                  onClick={() => reloadHistoryItem(item)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && reloadHistoryItem(item)}
+                >
+                  <div className="h-left">
+                    <div className={`h-type ${item.type}`}>
+                      {item.type === 'pascal' ? '▲ Pascal Triangle' : '∑ Binomial Expansion'}
                     </div>
-                    <div className="h-time">{formatHistoryDate(item.created_at)}</div>
+                    <div className="h-input">{escapeHtmlSimple(item.input)}</div>
                   </div>
-                ))}
-              </>
+                  <div className="h-time">{formatHistoryDate(item.created_at)}</div>
+                </div>
+              ))
             )}
           </div>
         </div>
