@@ -2,20 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
 
 const COLORS = ['#7c5cfc', '#fc5c7d', '#5cf8c8', '#fcd75c', '#fc955c', '#5cc8fc', '#c85cfc'];
-const API_BASE = "https://pascal-backend-v2.onrender.com";  // ✅ Fixed: Use API_BASE consistently
-
-// Remove this test fetch - it's causing errors
-// fetch(`${API_BASE}/questions`)  // This endpoint doesn't exist!
-
-const escHtml = (s) => {
-  if (!s) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-};
-
+const API_BASE = "https://pascal-backend-v2.onrender.com";
 const HISTORY_STORAGE_KEY = 'pascal_binomial_history';
 
 function App() {
@@ -27,6 +14,15 @@ function App() {
   const [history, setHistory] = useState([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const backendAvailable = useRef(true);
+  const isMounted = useRef(true);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   // ==================== PASCAL TRIANGLE COMPONENT ====================
   const PascalTriangle = ({ rows, n }) => {
@@ -103,7 +99,6 @@ function App() {
       const hasVarA = term.powA > 0;
       const hasVarB = term.powB > 0;
       
-      // Handle sign
       let sign = '';
       if (index === 0) {
         sign = term.coeff < 0 ? '−' : '';
@@ -116,7 +111,6 @@ function App() {
           <span className="term">
             {sign}
             
-            {/* Coefficient */}
             {showCoeff && absCoeff !== 1 && (
               <span className="coeff">{absCoeff}</span>
             )}
@@ -124,7 +118,6 @@ function App() {
               <span className="coeff">1</span>
             )}
             
-            {/* First variable */}
             {hasVarA && (
               <>
                 <span className="var">{term.varA}</span>
@@ -132,7 +125,6 @@ function App() {
               </>
             )}
             
-            {/* Second variable */}
             {hasVarB && (
               <>
                 <span className="var">{term.varB}</span>
@@ -144,7 +136,6 @@ function App() {
       );
     };
     
-    // Special case: p = 0
     if (terms.length === 1 && terms[0].coeff === 1 && terms[0].powA === 0 && terms[0].powB === 0) {
       return (
         <div className="expansion-result">
@@ -167,47 +158,69 @@ function App() {
   };
 
   // ==================== HISTORY FUNCTIONS ====================
-  const saveToLocalHistory = useCallback((type, input, result) => {
+  const loadHistory = useCallback(async () => {
+    if (!isMounted.current) return;
+    
+    setIsHistoryLoading(true);
+    
+    try {
+      const res = await fetch(`${API_BASE}/api/history`);
+      if (res.ok) {
+        const response = await res.json();
+        console.log('History API response:', response);
+        
+        // Extract data from the response object
+        let historyData = [];
+        if (response.data && Array.isArray(response.data)) {
+          historyData = response.data;
+        } else if (Array.isArray(response)) {
+          historyData = response;
+        }
+        
+        if (isMounted.current) {
+          setHistory(historyData);
+          backendAvailable.current = true;
+          console.log(`Loaded ${historyData.length} history items`);
+        }
+      } else {
+        throw new Error('Backend unavailable');
+      }
+    } catch (error) {
+      console.log('Using local storage fallback:', error);
+      backendAvailable.current = false;
+      const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
+      if (isMounted.current && stored) {
+        const parsedHistory = JSON.parse(stored);
+        setHistory(parsedHistory);
+        console.log(`Loaded ${parsedHistory.length} items from local storage`);
+      } else if (isMounted.current) {
+        setHistory([]);
+      }
+    } finally {
+      if (isMounted.current) {
+        setIsHistoryLoading(false);
+      }
+    }
+  }, []);
+
+  const addToHistory = useCallback(async (type, input, resultData) => {
+    // Create new entry for local storage
     const newEntry = {
       id: Date.now(),
       type,
       input,
-      result: result,
+      result: resultData,
       created_at: new Date().toISOString(),
     };
+    
+    // Update local storage and state immediately
     setHistory(prev => {
       const updated = [newEntry, ...prev].slice(0, 50);
       localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
       return updated;
     });
-  }, []);
-
-  const loadHistory = useCallback(async () => {
-    setIsHistoryLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/history`);
-      if (res.ok) {
-        const data = await res.json();
-        setHistory(Array.isArray(data) ? data : []);
-        backendAvailable.current = true;
-      } else {
-        throw new Error('Backend unavailable');
-      }
-    } catch (error) {
-      console.log('Using local storage fallback');
-      backendAvailable.current = false;
-      const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
-      if (stored) {
-        setHistory(JSON.parse(stored));
-      } else {
-        setHistory([]);
-      }
-    } finally {
-      setIsHistoryLoading(false);
-    }
-  }, []);
-
-  const addToHistory = useCallback(async (type, input, resultData) => {
+    
+    // Try to save to backend if available
     if (backendAvailable.current) {
       try {
         await fetch(`${API_BASE}/api/history`, {
@@ -215,68 +228,85 @@ function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type, input, result: resultData }),
         });
-        loadHistory();
+        console.log('Saved to backend successfully');
+        // Reload history to get server data (including server-generated ID)
+        setTimeout(() => loadHistory(), 500);
       } catch (error) {
         console.error('Failed to save to backend:', error);
         backendAvailable.current = false;
-        saveToLocalHistory(type, input, resultData);
       }
-    } else {
-      saveToLocalHistory(type, input, resultData);
     }
-  }, [loadHistory, saveToLocalHistory]);
+  }, [loadHistory]);
 
   const clearHistory = useCallback(async () => {
     if (!window.confirm('Delete all history? This cannot be undone.')) return;
 
+    // Clear local storage
+    localStorage.removeItem(HISTORY_STORAGE_KEY);
+    setHistory([]);
+    
+    // Clear backend if available
     if (backendAvailable.current) {
       try {
         await fetch(`${API_BASE}/api/history`, { method: 'DELETE' });
-        loadHistory();
+        console.log('Cleared backend history');
+        await loadHistory();
       } catch (error) {
+        console.error('Failed to clear backend:', error);
         backendAvailable.current = false;
-        localStorage.removeItem(HISTORY_STORAGE_KEY);
-        setHistory([]);
       }
-    } else {
-      localStorage.removeItem(HISTORY_STORAGE_KEY);
-      setHistory([]);
     }
+    
     setAnswerContent(<div className="answer-placeholder">→ Results will appear here</div>);
   }, [loadHistory]);
 
-  const reloadHistoryItem = useCallback(async (id) => {
-    try {
-      let item;
-      if (backendAvailable.current) {
-        const res = await fetch(`${API_BASE}/api/history/${id}`);
-        if (!res.ok) throw new Error('Failed to fetch');
-        item = await res.json();
-      } else {
-        item = history.find(h => h.id === id);
-      }
-      
-      if (item) {
-        if (item.type === 'pascal') {
-          setActiveTab('pascal');
-          const n = item.input.replace('n = ', '');
-          setPascalInput(n);
-          setTimeout(() => computePascalWithValue(n), 100);
-        } else if (item.type === 'expand') {
-          setActiveTab('expand');
-          setExpandInput(item.input);
-          setTimeout(() => computeExpansionWithValue(item.input), 100);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to reload history item', e);
+  const reloadHistoryItem = useCallback((item) => {
+    // Since there's no /api/history/:id endpoint, use the stored result directly
+    if (!item || !item.result) {
+      console.error('No result data in history item');
+      return;
     }
-  }, [history]);
+    
+    if (item.type === 'pascal') {
+      setActiveTab('pascal');
+      const n = item.input.replace('n = ', '');
+      setPascalInput(n);
+      // Use the stored result directly
+      setTimeout(() => {
+        const result = item.result;
+        if (result && result.rows) {
+          setAnswerContent(<PascalTriangle rows={result.rows} n={result.n} />);
+        } else {
+          // Fallback to recompute
+          computePascalWithValue(n);
+        }
+      }, 100);
+    } else if (item.type === 'expand') {
+      setActiveTab('expand');
+      setExpandInput(item.input);
+      // Use the stored result directly
+      setTimeout(() => {
+        const result = item.result;
+        if (result && result.terms) {
+          setAnswerContent(<BinomialExpansion expression={item.input} terms={result.terms} />);
+        } else {
+          // Fallback to recompute
+          computeExpansionWithValue(item.input);
+        }
+      }, 100);
+    }
+  }, []);
 
   // ==================== PASCAL COMPUTATION ====================
   const computePascalWithValue = useCallback(async (nValue) => {
     if (!nValue || nValue === '') {
       setAnswerContent(<div className="error">⚠ Please enter a value.</div>);
+      return;
+    }
+
+    const n = parseInt(nValue);
+    if (isNaN(n) || n < 0 || n > 100000) {
+      setAnswerContent(<div className="error">⚠ n must be between 0 and 100,000</div>);
       return;
     }
 
@@ -296,19 +326,7 @@ function App() {
         return;
       }
 
-      let html = '<div class="pascal-display">';
-      if (data.rows && Array.isArray(data.rows)) {
-        data.rows.forEach((row, i) => {
-          const col = COLORS[i % COLORS.length];
-          html += '<div class="pascal-row">';
-          row.forEach(v => {
-            html += `<div class="pascal-cell" style="background:${col}22;color:${col};border:1px solid ${col}55">${v}</div>`;
-          });
-          html += '</div>';
-        });
-      }
-      html += '</div>';
-      setAnswerContent(<div dangerouslySetInnerHTML={{ __html: html }} />);
+      setAnswerContent(<PascalTriangle rows={data.rows} n={n} />);
       await addToHistory('pascal', `n = ${nValue}`, data);
     } catch (err) {
       console.error(err);
@@ -460,7 +478,7 @@ function App() {
               {isLoading ? '...' : 'Generate'}
             </button>
           </div>
-          <div className="hint">Enter a non-negative integer (0-100) and press Generate.</div>
+          <div className="hint">✨ Enter a non-negative integer (0-100,000) and press Generate</div>
         </div>
 
         <div className={`panel expand-panel ${activeTab === 'expand' ? 'active' : ''}`}>
@@ -478,7 +496,7 @@ function App() {
               {isLoading ? '...' : 'Expand'}
             </button>
           </div>
-          <div className="hint">Format: (ax^n + by^m)^p | Supports coefficients and exponents</div>
+          <div className="hint">📐 Format: (axⁿ + byᵐ)ᵖ | Supports coefficients and exponents, p up to 1000</div>
         </div>
 
         <div className={`panel history-panel ${activeTab === 'history' ? 'active' : ''}`}>
@@ -494,10 +512,10 @@ function App() {
                 <div
                   key={item.id}
                   className="history-item"
-                  onClick={() => reloadHistoryItem(item.id)}
+                  onClick={() => reloadHistoryItem(item)}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={(e) => e.key === 'Enter' && reloadHistoryItem(item.id)}
+                  onKeyDown={(e) => e.key === 'Enter' && reloadHistoryItem(item)}
                 >
                   <div className="h-left">
                     <div className={`h-type ${item.type}`}>
