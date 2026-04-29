@@ -146,6 +146,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [history, setHistory] = useState([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [backendStatus, setBackendStatus] = useState('checking');
   const backendAvailable = useRef(true);
   const timeoutRef = useRef(null);
   const isMounted = useRef(true);
@@ -179,27 +180,49 @@ function App() {
 
   // Load history from backend or local storage
   const loadHistory = useCallback(async () => {
+    if (!isMounted.current) return;
+    
     setIsHistoryLoading(true);
+    setBackendStatus('loading');
+    
     try {
-      const res = await fetch(`${API_BASE}/api/history`);
+      console.log('Fetching history from:', `${API_BASE}/api/history`);
+      const res = await fetch(`${API_BASE}/api/history`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      console.log('Response status:', res.status);
+      
       if (res.ok) {
         const data = await res.json();
+        console.log('History data received:', data);
         if (isMounted.current) {
           setHistory(Array.isArray(data) ? data : []);
           backendAvailable.current = true;
+          setBackendStatus('connected');
         }
       } else {
-        throw new Error('Backend unavailable');
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
     } catch (error) {
-      console.log('Using local storage fallback');
+      console.error('Backend error:', error);
       backendAvailable.current = false;
+      setBackendStatus('fallback');
+      
+      // Try to load from local storage
       const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
+      console.log('Local storage data:', stored);
       if (isMounted.current) {
         if (stored) {
-          setHistory(JSON.parse(stored));
+          const parsedHistory = JSON.parse(stored);
+          setHistory(parsedHistory);
+          console.log('Loaded from local storage:', parsedHistory.length, 'items');
         } else {
           setHistory([]);
+          console.log('No local storage data found');
         }
       }
     } finally {
@@ -211,20 +234,30 @@ function App() {
 
   // Add to history
   const addToHistory = useCallback(async (type, input, resultData) => {
+    console.log('Adding to history:', { type, input });
+    
     if (backendAvailable.current) {
       try {
-        await fetch(`${API_BASE}/api/history`, {
+        const response = await fetch(`${API_BASE}/api/history`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type, input, result: resultData }),
         });
-        loadHistory();
+        
+        if (response.ok) {
+          console.log('Successfully saved to backend');
+          loadHistory();
+        } else {
+          throw new Error('Failed to save to backend');
+        }
       } catch (error) {
         console.error('Failed to save to backend:', error);
         backendAvailable.current = false;
+        setBackendStatus('fallback');
         saveToLocalHistory(type, input, resultData);
       }
     } else {
+      console.log('Saving to local storage instead');
       saveToLocalHistory(type, input, resultData);
     }
   }, [loadHistory, saveToLocalHistory]);
@@ -238,6 +271,7 @@ function App() {
         await fetch(`${API_BASE}/api/history`, { method: 'DELETE' });
         await loadHistory();
       } catch (error) {
+        console.error('Failed to clear backend history:', error);
         backendAvailable.current = false;
         localStorage.removeItem(HISTORY_STORAGE_KEY);
         if (isMounted.current) {
@@ -365,7 +399,7 @@ function App() {
     computeExpansionWithValue(expandInput.trim());
   }, [expandInput, computeExpansionWithValue]);
 
-  // Reload history item with 1ms delay
+  // Reload history item
   const reloadHistoryItem = useCallback((id) => {
     const loadItem = async () => {
       try {
@@ -387,7 +421,7 @@ function App() {
               if (isMounted.current) {
                 computePascalWithValue(n);
               }
-            }, 1);
+            }, 100);
           } else if (item.type === 'expand') {
             setActiveTab('expand');
             setExpandInput(item.input);
@@ -395,7 +429,7 @@ function App() {
               if (isMounted.current) {
                 computeExpansionWithValue(item.input);
               }
-            }, 1);
+            }, 100);
           }
         }
       } catch (e) {
@@ -432,6 +466,13 @@ function App() {
   // Load history on mount
   useEffect(() => {
     loadHistory();
+    
+    // Also check if there's any data in localStorage on mount
+    const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      console.log('Found existing localStorage data:', parsed.length, 'items');
+    }
   }, [loadHistory]);
 
   // Format date for display
@@ -489,6 +530,14 @@ function App() {
           </button>
         </div>
 
+        {/* Backend Status Indicator */}
+        <div className={`backend-status ${backendStatus}`}>
+          {backendStatus === 'connected' && '✅ Connected to server'}
+          {backendStatus === 'fallback' && '💾 Using local storage (offline mode)'}
+          {backendStatus === 'loading' && '🔄 Connecting...'}
+          {backendStatus === 'checking' && '🔍 Checking connection...'}
+        </div>
+
         <div className={`panel pascal-panel ${activeTab === 'pascal' ? 'active' : ''}`}>
           <div className="panel-title">Pascal Triangle</div>
           <div className="input-row">
@@ -534,26 +583,35 @@ function App() {
             {isHistoryLoading ? (
               <div className="loading">📡 Loading from database...</div>
             ) : history.length === 0 ? (
-              <div className="history-empty">📭 No calculations yet. Start by generating Pascal triangle or expanding an expression!</div>
+              <div className="history-empty">
+                📭 No calculations yet. 
+                <br />
+                <small>Generate a Pascal triangle or expand an expression to see it here!</small>
+                <br />
+                <small style={{color: '#666'}}>Backend status: {backendStatus}</small>
+              </div>
             ) : (
-              history.map((item) => (
-                <div
-                  key={item.id}
-                  className="history-item"
-                  onClick={() => reloadHistoryItem(item.id)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => e.key === 'Enter' && reloadHistoryItem(item.id)}
-                >
-                  <div className="h-left">
-                    <div className={`h-type ${item.type}`}>
-                      {item.type === 'pascal' ? '▲ Pascal Triangle' : '∑ Binomial Expansion'}
+              <>
+                <div className="history-count">📊 {history.length} item(s) in history</div>
+                {history.map((item) => (
+                  <div
+                    key={item.id}
+                    className="history-item"
+                    onClick={() => reloadHistoryItem(item.id)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && reloadHistoryItem(item.id)}
+                  >
+                    <div className="h-left">
+                      <div className={`h-type ${item.type}`}>
+                        {item.type === 'pascal' ? '▲ Pascal Triangle' : '∑ Binomial Expansion'}
+                      </div>
+                      <div className="h-input">{escapeHtmlSimple(item.input)}</div>
                     </div>
-                    <div className="h-input">{escapeHtmlSimple(item.input)}</div>
+                    <div className="h-time">{formatHistoryDate(item.created_at)}</div>
                   </div>
-                  <div className="h-time">{formatHistoryDate(item.created_at)}</div>
-                </div>
-              ))
+                ))}
+              </>
             )}
           </div>
         </div>
