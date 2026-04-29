@@ -148,10 +148,13 @@ function App() {
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const backendAvailable = useRef(true);
   const timeoutRef = useRef(null);
+  const isMounted = useRef(true);
 
   // Cleanup timeouts on unmount
   useEffect(() => {
+    isMounted.current = true;
     return () => {
+      isMounted.current = false;
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
@@ -181,8 +184,10 @@ function App() {
       const res = await fetch(`${API_BASE}/api/history`);
       if (res.ok) {
         const data = await res.json();
-        setHistory(Array.isArray(data) ? data : []);
-        backendAvailable.current = true;
+        if (isMounted.current) {
+          setHistory(Array.isArray(data) ? data : []);
+          backendAvailable.current = true;
+        }
       } else {
         throw new Error('Backend unavailable');
       }
@@ -190,13 +195,17 @@ function App() {
       console.log('Using local storage fallback');
       backendAvailable.current = false;
       const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
-      if (stored) {
-        setHistory(JSON.parse(stored));
-      } else {
-        setHistory([]);
+      if (isMounted.current) {
+        if (stored) {
+          setHistory(JSON.parse(stored));
+        } else {
+          setHistory([]);
+        }
       }
     } finally {
-      setIsHistoryLoading(false);
+      if (isMounted.current) {
+        setIsHistoryLoading(false);
+      }
     }
   }, []);
 
@@ -231,73 +240,42 @@ function App() {
       } catch (error) {
         backendAvailable.current = false;
         localStorage.removeItem(HISTORY_STORAGE_KEY);
-        setHistory([]);
+        if (isMounted.current) {
+          setHistory([]);
+        }
       }
     } else {
       localStorage.removeItem(HISTORY_STORAGE_KEY);
-      setHistory([]);
+      if (isMounted.current) {
+        setHistory([]);
+      }
     }
-    setAnswerContent(<div className="answer-placeholder">→ Results will appear here</div>);
+    if (isMounted.current) {
+      setAnswerContent(<div className="answer-placeholder">→ Results will appear here</div>);
+    }
   }, [loadHistory]);
-
-  // Reload history item with 1ms delay
-  const reloadHistoryItem = useCallback(async (id) => {
-    try {
-      let item;
-      if (backendAvailable.current) {
-        const res = await fetch(`${API_BASE}/api/history/${id}`);
-        if (!res.ok) throw new Error('Failed to fetch');
-        item = await res.json();
-      } else {
-        item = history.find(h => h.id === id);
-      }
-      
-      if (item) {
-        if (item.type === 'pascal') {
-          setActiveTab('pascal');
-          const n = item.input.replace('n = ', '');
-          setPascalInput(n);
-          // Clear any existing timeout
-          if (timeoutRef.current) {
-            clearTimeout(timeoutRef.current);
-          }
-          // Set new timeout with 1ms delay
-          timeoutRef.current = setTimeout(() => {
-            computePascalWithValue(n);
-          }, 1);
-        } else if (item.type === 'expand') {
-          setActiveTab('expand');
-          setExpandInput(item.input);
-          // Clear any existing timeout
-          if (timeoutRef.current) {
-            clearTimeout(timeoutRef.current);
-          }
-          // Set new timeout with 1ms delay
-          timeoutRef.current = setTimeout(() => {
-            computeExpansionWithValue(item.input);
-          }, 1);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to reload history item', e);
-    }
-  }, [history, computePascalWithValue, computeExpansionWithValue]);
 
   // Compute Pascal triangle
   const computePascalWithValue = useCallback(async (nValue) => {
     if (!nValue || nValue === '') {
-      setAnswerContent(<div className="error">⚠ Please enter a value.</div>);
+      if (isMounted.current) {
+        setAnswerContent(<div className="error">⚠ Please enter a value.</div>);
+      }
       return;
     }
 
     const n = parseInt(nValue);
     if (isNaN(n) || n < 0 || n > 100000) {
-      setAnswerContent(<div className="error">⚠ n must be between 0 and 100,000</div>);
+      if (isMounted.current) {
+        setAnswerContent(<div className="error">⚠ n must be between 0 and 100,000</div>);
+      }
       return;
     }
 
-    setIsLoading(true);
-    setAnswerContent(<div className="loading">Computing Pascal triangle for n={n}...</div>);
+    if (isMounted.current) {
+      setIsLoading(true);
+      setAnswerContent(<div className="loading">Computing Pascal triangle for n={n}...</div>);
+    }
 
     try {
       const res = await fetch(`${API_BASE}/api/pascal`, {
@@ -308,17 +286,25 @@ function App() {
       const data = await res.json();
 
       if (!res.ok) {
-        setAnswerContent(<div className="error">⚠ {data.error}</div>);
+        if (isMounted.current) {
+          setAnswerContent(<div className="error">⚠ {data.error}</div>);
+        }
         return;
       }
 
-      setAnswerContent(<PascalTriangle rows={data.rows} n={n} />);
+      if (isMounted.current) {
+        setAnswerContent(<PascalTriangle rows={data.rows} n={n} />);
+      }
       await addToHistory('pascal', `n = ${nValue}`, data);
     } catch (err) {
       console.error(err);
-      setAnswerContent(<div className="error">⚠ Server error. Please check backend connection.</div>);
+      if (isMounted.current) {
+        setAnswerContent(<div className="error">⚠ Server error. Please check backend connection.</div>);
+      }
     } finally {
-      setIsLoading(false);
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
     }
   }, [addToHistory]);
 
@@ -329,12 +315,16 @@ function App() {
   // Compute binomial expansion
   const computeExpansionWithValue = useCallback(async (exprValue) => {
     if (!exprValue || exprValue === '') {
-      setAnswerContent(<div className="error">⚠ Please enter an expression.</div>);
+      if (isMounted.current) {
+        setAnswerContent(<div className="error">⚠ Please enter an expression.</div>);
+      }
       return;
     }
 
-    setIsLoading(true);
-    setAnswerContent(<div className="loading">Expanding {exprValue}...</div>);
+    if (isMounted.current) {
+      setIsLoading(true);
+      setAnswerContent(<div className="loading">Expanding {exprValue}...</div>);
+    }
 
     try {
       const res = await fetch(`${API_BASE}/api/expand`, {
@@ -345,21 +335,29 @@ function App() {
       const data = await res.json();
 
       if (!res.ok) {
-        setAnswerContent(<div className="error">⚠ {data.error}</div>);
+        if (isMounted.current) {
+          setAnswerContent(<div className="error">⚠ {data.error}</div>);
+        }
         return;
       }
 
-      setAnswerContent(<BinomialExpansion expression={exprValue} terms={data.terms} />);
+      if (isMounted.current) {
+        setAnswerContent(<BinomialExpansion expression={exprValue} terms={data.terms} />);
+      }
       await addToHistory('expand', exprValue, data);
     } catch (err) {
       console.error(err);
-      setAnswerContent(
-        <div className="error">
-          ⚠ Server error. Please check backend connection.
-        </div>
-      );
+      if (isMounted.current) {
+        setAnswerContent(
+          <div className="error">
+            ⚠ Server error. Please check backend connection.
+          </div>
+        );
+      }
     } finally {
-      setIsLoading(false);
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
     }
   }, [addToHistory]);
 
@@ -367,12 +365,49 @@ function App() {
     computeExpansionWithValue(expandInput.trim());
   }, [expandInput, computeExpansionWithValue]);
 
+  // Reload history item with 1ms delay
+  const reloadHistoryItem = useCallback((id) => {
+    const loadItem = async () => {
+      try {
+        let item;
+        if (backendAvailable.current) {
+          const res = await fetch(`${API_BASE}/api/history/${id}`);
+          if (!res.ok) throw new Error('Failed to fetch');
+          item = await res.json();
+        } else {
+          item = history.find(h => h.id === id);
+        }
+        
+        if (item && isMounted.current) {
+          if (item.type === 'pascal') {
+            setActiveTab('pascal');
+            const n = item.input.replace('n = ', '');
+            setPascalInput(n);
+            setTimeout(() => {
+              if (isMounted.current) {
+                computePascalWithValue(n);
+              }
+            }, 1);
+          } else if (item.type === 'expand') {
+            setActiveTab('expand');
+            setExpandInput(item.input);
+            setTimeout(() => {
+              if (isMounted.current) {
+                computeExpansionWithValue(item.input);
+              }
+            }, 1);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to reload history item', e);
+      }
+    };
+    
+    loadItem();
+  }, [history, computePascalWithValue, computeExpansionWithValue]);
+
   // Handle tab change
   const handleTabChange = useCallback((tab) => {
-    // Clear any pending timeouts when changing tabs
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
     setActiveTab(tab);
     if (tab === 'history') {
       loadHistory();
