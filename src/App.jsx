@@ -3,8 +3,140 @@ import './App.css';
 
 const COLORS = ['#7c5cfc', '#fc5c7d', '#5cf8c8', '#fcd75c', '#fc955c', '#5cc8fc', '#c85cfc'];
 const API_BASE = import.meta.env.VITE_API_BASE || "https://pascal-backend-v2.onrender.com";
-
 const HISTORY_STORAGE_KEY = 'pascal_binomial_history';
+
+// Pascal Triangle Component
+const PascalTriangle = ({ rows, n }) => {
+  if (n > 20) {
+    return (
+      <div className="pascal-display">
+        <div className="info-message">
+          📊 Showing first 20 rows of {n + 1} total rows:
+        </div>
+        {rows.slice(0, 20).map((row, i) => (
+          <div key={i} className="pascal-row">
+            {row.slice(0, 15).map((value, j) => {
+              const col = COLORS[i % COLORS.length];
+              const displayValue = value.length > 8 ? value.slice(0, 8) + '…' : value;
+              return (
+                <div
+                  key={j}
+                  className="pascal-cell"
+                  style={{
+                    background: `${col}22`,
+                    color: col,
+                    border: `1px solid ${col}55`
+                  }}
+                  title={value}
+                >
+                  {displayValue}
+                </div>
+              );
+            })}
+            {row.length > 15 && (
+              <div className="pascal-cell more">+{row.length - 15}</div>
+            )}
+          </div>
+        ))}
+        <div className="info-message">
+          ✨ ... and {n - 19} more rows (total {n + 1} rows)
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pascal-display">
+      {rows.map((row, i) => (
+        <div key={i} className="pascal-row">
+          {row.map((value, j) => {
+            const col = COLORS[i % COLORS.length];
+            return (
+              <div
+                key={j}
+                className="pascal-cell"
+                style={{
+                  background: `${col}22`,
+                  color: col,
+                  border: `1px solid ${col}55`
+                }}
+              >
+                {value}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// Binomial Expansion Component
+const BinomialExpansion = ({ expression, terms }) => {
+  const formatTerm = (term, index) => {
+    const absCoeff = Math.abs(term.coeff);
+    const showCoeff = !(absCoeff === 1 && (term.powA > 0 || term.powB > 0));
+    
+    const hasVarA = term.powA > 0;
+    const hasVarB = term.powB > 0;
+    
+    let sign = '';
+    if (index === 0) {
+      sign = term.coeff < 0 ? '−' : '';
+    } else {
+      sign = term.coeff > 0 ? ' + ' : ' − ';
+    }
+    
+    return (
+      <React.Fragment key={index}>
+        <span className="term">
+          {sign}
+          
+          {showCoeff && absCoeff !== 1 && (
+            <span className="coeff">{absCoeff}</span>
+          )}
+          {!showCoeff && !hasVarA && !hasVarB && absCoeff === 1 && (
+            <span className="coeff">1</span>
+          )}
+          
+          {hasVarA && (
+            <>
+              <span className="var">{term.varA}</span>
+              {term.powA > 1 && <sup>{term.powA}</sup>}
+            </>
+          )}
+          
+          {hasVarB && (
+            <>
+              <span className="var">{term.varB}</span>
+              {term.powB > 1 && <sup>{term.powB}</sup>}
+            </>
+          )}
+        </span>
+      </React.Fragment>
+    );
+  };
+  
+  if (terms.length === 1 && terms[0].coeff === 1 && terms[0].powA === 0 && terms[0].powB === 0) {
+    return (
+      <div className="expansion-result">
+        <div className="expansion-title">{expression} =</div>
+        <div className="expansion-terms">
+          <span className="coeff">1</span>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="expansion-result">
+      <div className="expansion-title">{expression} =</div>
+      <div className="expansion-terms">
+        {terms.map((term, index) => formatTerm(term, index))}
+      </div>
+    </div>
+  );
+};
 
 function App() {
   const [activeTab, setActiveTab] = useState('pascal');
@@ -15,146 +147,18 @@ function App() {
   const [history, setHistory] = useState([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const backendAvailable = useRef(true);
+  const timeoutRef = useRef(null);
 
-  // ==================== PASCAL TRIANGLE COMPONENT ====================
-  const PascalTriangle = ({ rows, n }) => {
-    if (n > 20) {
-      return (
-        <div className="pascal-display">
-          <div className="info-message">
-            📊 Showing first 20 rows of {n + 1} total rows:
-          </div>
-          {rows.slice(0, 20).map((row, i) => (
-            <div key={i} className="pascal-row">
-              {row.slice(0, 15).map((value, j) => {
-                const col = COLORS[i % COLORS.length];
-                const displayValue = value.length > 8 ? value.slice(0, 8) + '…' : value;
-                return (
-                  <div
-                    key={j}
-                    className="pascal-cell"
-                    style={{
-                      background: `${col}22`,
-                      color: col,
-                      border: `1px solid ${col}55`
-                    }}
-                    title={value}
-                  >
-                    {displayValue}
-                  </div>
-                );
-              })}
-              {row.length > 15 && (
-                <div className="pascal-cell more">+{row.length - 15}</div>
-              )}
-            </div>
-          ))}
-          <div className="info-message">
-            ✨ ... and {n - 19} more rows (total {n + 1} rows)
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="pascal-display">
-        {rows.map((row, i) => (
-          <div key={i} className="pascal-row">
-            {row.map((value, j) => {
-              const col = COLORS[i % COLORS.length];
-              return (
-                <div
-                  key={j}
-                  className="pascal-cell"
-                  style={{
-                    background: `${col}22`,
-                    color: col,
-                    border: `1px solid ${col}55`
-                  }}
-                >
-                  {value}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  // ==================== BINOMIAL EXPANSION COMPONENT ====================
-  const BinomialExpansion = ({ expression, terms }) => {
-    const formatTerm = (term, index) => {
-      const absCoeff = Math.abs(term.coeff);
-      const showCoeff = !(absCoeff === 1 && (term.powA > 0 || term.powB > 0));
-      
-      const hasVarA = term.powA > 0;
-      const hasVarB = term.powB > 0;
-      
-      // Handle sign
-      let sign = '';
-      if (index === 0) {
-        sign = term.coeff < 0 ? '−' : '';
-      } else {
-        sign = term.coeff > 0 ? ' + ' : ' − ';
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
       }
-      
-      return (
-        <React.Fragment key={index}>
-          <span className="term">
-            {sign}
-            
-            {/* Coefficient */}
-            {showCoeff && absCoeff !== 1 && (
-              <span className="coeff">{absCoeff}</span>
-            )}
-            {!showCoeff && !hasVarA && !hasVarB && absCoeff === 1 && (
-              <span className="coeff">1</span>
-            )}
-            
-            {/* First variable */}
-            {hasVarA && (
-              <>
-                <span className="var">{term.varA}</span>
-                {term.powA > 1 && <sup>{term.powA}</sup>}
-              </>
-            )}
-            
-            {/* Second variable */}
-            {hasVarB && (
-              <>
-                <span className="var">{term.varB}</span>
-                {term.powB > 1 && <sup>{term.powB}</sup>}
-              </>
-            )}
-          </span>
-        </React.Fragment>
-      );
     };
-    
-    // Special case: p = 0
-    if (terms.length === 1 && terms[0].coeff === 1 && terms[0].powA === 0 && terms[0].powB === 0) {
-      return (
-        <div className="expansion-result">
-          <div className="expansion-title">{expression} =</div>
-          <div className="expansion-terms">
-            <span className="coeff">1</span>
-          </div>
-        </div>
-      );
-    }
-    
-    return (
-      <div className="expansion-result">
-        <div className="expansion-title">{expression} =</div>
-        <div className="expansion-terms">
-          {terms.map((term, index) => formatTerm(term, index))}
-        </div>
-      </div>
-    );
-  };
+  }, []);
 
-  // ==================== HISTORY FUNCTIONS ====================
+  // Save to local storage
   const saveToLocalHistory = useCallback((type, input, result) => {
     const newEntry = {
       id: Date.now(),
@@ -170,6 +174,7 @@ function App() {
     });
   }, []);
 
+  // Load history from backend or local storage
   const loadHistory = useCallback(async () => {
     setIsHistoryLoading(true);
     try {
@@ -195,6 +200,7 @@ function App() {
     }
   }, []);
 
+  // Add to history
   const addToHistory = useCallback(async (type, input, resultData) => {
     if (backendAvailable.current) {
       try {
@@ -214,13 +220,14 @@ function App() {
     }
   }, [loadHistory, saveToLocalHistory]);
 
+  // Clear all history
   const clearHistory = useCallback(async () => {
     if (!window.confirm('Delete all history? This cannot be undone.')) return;
 
     if (backendAvailable.current) {
       try {
         await fetch(`${API_BASE}/api/history`, { method: 'DELETE' });
-        loadHistory();
+        await loadHistory();
       } catch (error) {
         backendAvailable.current = false;
         localStorage.removeItem(HISTORY_STORAGE_KEY);
@@ -233,6 +240,7 @@ function App() {
     setAnswerContent(<div className="answer-placeholder">→ Results will appear here</div>);
   }, [loadHistory]);
 
+  // Reload history item with 1ms delay
   const reloadHistoryItem = useCallback(async (id) => {
     try {
       let item;
@@ -249,19 +257,33 @@ function App() {
           setActiveTab('pascal');
           const n = item.input.replace('n = ', '');
           setPascalInput(n);
-          setTimeout(() => computePascalWithValue(n), 100);
+          // Clear any existing timeout
+          if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+          }
+          // Set new timeout with 1ms delay
+          timeoutRef.current = setTimeout(() => {
+            computePascalWithValue(n);
+          }, 1);
         } else if (item.type === 'expand') {
           setActiveTab('expand');
           setExpandInput(item.input);
-          setTimeout(() => computeExpansionWithValue(item.input), 100);
+          // Clear any existing timeout
+          if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+          }
+          // Set new timeout with 1ms delay
+          timeoutRef.current = setTimeout(() => {
+            computeExpansionWithValue(item.input);
+          }, 1);
         }
       }
     } catch (e) {
       console.error('Failed to reload history item', e);
     }
-  }, [history]);
+  }, [history, computePascalWithValue, computeExpansionWithValue]);
 
-  // ==================== PASCAL COMPUTATION ====================
+  // Compute Pascal triangle
   const computePascalWithValue = useCallback(async (nValue) => {
     if (!nValue || nValue === '') {
       setAnswerContent(<div className="error">⚠ Please enter a value.</div>);
@@ -304,7 +326,7 @@ function App() {
     computePascalWithValue(pascalInput.trim());
   }, [pascalInput, computePascalWithValue]);
 
-  // ==================== EXPANSION COMPUTATION ====================
+  // Compute binomial expansion
   const computeExpansionWithValue = useCallback(async (exprValue) => {
     if (!exprValue || exprValue === '') {
       setAnswerContent(<div className="error">⚠ Please enter an expression.</div>);
@@ -345,14 +367,19 @@ function App() {
     computeExpansionWithValue(expandInput.trim());
   }, [expandInput, computeExpansionWithValue]);
 
-  // ==================== UI HELPERS ====================
+  // Handle tab change
   const handleTabChange = useCallback((tab) => {
+    // Clear any pending timeouts when changing tabs
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
     setActiveTab(tab);
     if (tab === 'history') {
       loadHistory();
     }
   }, [loadHistory]);
 
+  // Keyboard event handler
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key !== 'Enter') return;
@@ -367,10 +394,12 @@ function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [activeTab, computePascal, computeExpansion]);
 
+  // Load history on mount
   useEffect(() => {
     loadHistory();
   }, [loadHistory]);
 
+  // Format date for display
   const formatHistoryDate = (dateStr) => {
     if (!dateStr) return '';
     try {
@@ -381,6 +410,7 @@ function App() {
     }
   };
 
+  // Simple HTML escaping
   const escapeHtmlSimple = (str) => {
     if (!str) return '';
     return String(str).replace(/[&<>]/g, function(m) {
@@ -391,7 +421,6 @@ function App() {
     });
   };
 
-  // ==================== RENDER ====================
   return (
     <>
       <div className="noise" aria-hidden="true"></div>
