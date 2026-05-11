@@ -30,9 +30,9 @@ function App() {
       return (
         <div className="pascal-display">
           <div className="info-message">
-            📊 Showing first 20 rows of {n + 1} total rows:
+            📊 Showing first 100 rows of {n + 1} total rows:
           </div>
-          {rows.slice(0, 20).map((row, i) => (
+          {rows.slice(0, 100).map((row, i) => (
             <div key={i} className="pascal-row">
               {row.slice(0, 15).map((value, j) => {
                 const col = COLORS[i % COLORS.length];
@@ -58,7 +58,7 @@ function App() {
             </div>
           ))}
           <div className="info-message">
-            ✨ ... and {n - 19} more rows (total {n + 1} rows)
+             ... and {n - 19} more rows (total {n + 1} rows)
           </div>
         </div>
       );
@@ -478,7 +478,7 @@ function App() {
               {isLoading ? '...' : 'Generate'}
             </button>
           </div>
-          <div className="hint">✨ Enter a non-negative integer (0-100,000) and press Generate</div>
+          <div className="hint"> Enter a non-negative integer (0-100,000) and press Generate</div>
         </div>
 
         <div className={`panel expand-panel ${activeTab === 'expand' ? 'active' : ''}`}>
