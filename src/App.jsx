@@ -26,7 +26,7 @@ function App() {
 
   // ==================== PASCAL TRIANGLE COMPONENT ====================
   const PascalTriangle = ({ rows, n }) => {
-    if (n > 20) {
+    if (n > 100) {
       return (
         <div className="pascal-display">
           <div className="info-message">
